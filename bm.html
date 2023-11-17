@@ -31,8 +31,16 @@
       let presetRandom = true;
       let canvasW = 1280;
       let canvasH = 720;
+      let logoImg;
+      let imageWidth;
+      let imageHeight;
 
       let canvas = document.getElementById('canvas');
+      let butterCanvas = document.getElementById('butterCanvas');
+      let logoCanvas = document.getElementById('logoCanvas');
+
+      const ctx = canvas.getContext('2d');
+      const logoCtx = logoCanvas.getContext('2d');
 
       if (localStorage.resolution) {
         
@@ -41,6 +49,10 @@
         canvasH = parseInt(res[1]);
         canvas.width = canvasW;
         canvas.height = canvasH;
+        butterCanvas.width = canvasW;
+        butterCanvas.height = canvasH;
+        logoCanvas.width = canvasW;
+        logoCanvas.height = canvasH;
         $('#resolutionSelect').val(localStorage.resolution);
       }
 
@@ -179,6 +191,10 @@
         canvasH = parseInt(res[1]);
         canvas.width = canvasW;
         canvas.height = canvasH;
+        butterCanvas.width = canvasW;
+        butterCanvas.height = canvasH;
+        logoCanvas.width = canvasW;
+        logoCanvas.height = canvasH;
         console.log(canvasW, canvasH);
         if (visualizer) {
           visualizer.setRendererSize(canvasW, canvasH);
@@ -238,6 +254,10 @@
         audioContext = new AudioContext();
         canvas.height = canvasH;
         canvas.width = canvasW;
+        logoImg = document.getElementById('logoImg');
+
+        imageHeight = logoImg.naturalHeight;
+        imageWidth = logoImg.naturalWidth;
 
         presets = {};
         if (window.butterchurnPresets) {
@@ -251,6 +271,9 @@
         // console.log('presets2', {...presets});
         // presetKeys = _.keys(presets);
         presetKeys = Object.keys(presets).sort();
+        presetKeys.forEach((pk) => {
+          console.log(pk, presets[pk]);
+        })
         presetIndex = Math.floor(Math.random() * presetKeys.length);
 
         var presetSelect = document.getElementById('presetSelect');
@@ -261,7 +284,7 @@
             presetSelect.appendChild(opt);
         }
 
-        visualizer = butterchurn.default.createVisualizer(audioContext, canvas , {
+        visualizer = butterchurn.default.createVisualizer(audioContext, butterCanvas , {
           width: canvasW,
           height: canvasH,
           pixelRatio: window.devicePixelRatio || 1,
@@ -269,6 +292,22 @@
         });
         nextPreset(0);
         cycleInterval = setInterval(() => nextPreset(2.7), presetCycleLength);
+        function render() {
+          ctx.drawImage(butterCanvas, 0, 0, canvasW, canvasH);
+          // ctx.fillStyle = 'red';
+          // ctx.fillRect(100, 100, 100, 100);
+
+          // context.shadowColor = `rgb( ${sr}, ${sg}, ${sb} )`;
+          // context.shadowOffsetX = 0;
+          // context.shadowOffsetY = 0;
+          // context.shadowBlur = 10 + shadowSize;
+          ctx.globalAlpha = 0.4;
+          ctx.drawImage(logoImg, canvasW * 0.1 , canvasH * 0.1, canvasW * 0.8, canvasH * 0.8);
+          ctx.globalAlpha = 1.0;
+
+          requestAnimationFrame(render);
+        }
+        requestAnimationFrame(render);
       }
 
       // initPlayer();
@@ -313,8 +352,10 @@
         </select></div>
       </div>
     </div>
-    <canvas id='canvas' width='1280' height='720'>
-    </canvas>
+    <canvas id='canvas' width='1280' height='720'></canvas>
+    <canvas id='butterCanvas' width='1280' height='720' style="display: none;"></canvas>
+    <canvas id='logoCanvas' width='1280' height='720' style="display: none;"></canvas>
+    <img src="/whitelogo.svg" id="logoImg" style="display: none;"></img>
   </div>
 </body>
 </html>
