@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <title>Butterchurn Demo</title>
+  <meta name="description" content="Butterchurn Demo Example">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <script type="text/javascript" src="/scripts/butterchurn.js"></script>
+  <script type="text/javascript" src="/scripts/butterchurn-presets.js"></script>
+  <script type="text/javascript" src="/scripts/butterchurnPresetsExtra.min.js"></script>
+  <script src="/scripts/jquery-3.1.1.min.js"></script>
+
+  <link rel="stylesheet" href="/css/page.css" />
+  <link rel="stylesheet" href="/css/normalize.css" />
+
+  <script>
+    $(function() {
+      let visualizer = null;
+      let rendering = false;
+      let audioContext = null;
+      let sourceNode = null;
+      let delayedAudible = null;
+      let cycleInterval = null;
+      let presets = {};
+      let presetKeys = [];
+      let presetIndexHist = [];
+      let presetIndex = 0;
+      let presetCycle = true;
+      let presetCycleLength = 15000;
+      let presetRandom = true;
+      let canvasW = 1280;
+      let canvasH = 720;
+
+      let canvas = document.getElementById('canvas');
+
+      if (localStorage.resolution) {
+        
+        const res = localStorage.resolution.split('x');
+        canvasW = parseInt(res[0]);
+        canvasH = parseInt(res[1]);
+        canvas.width = canvasW;
+        canvas.height = canvasH;
+        $('#resolutionSelect').val(localStorage.resolution);
+      }
+
+      function connectToAudioAnalyzer(sourceNode) {
+        if(delayedAudible) {
+          delayedAudible.disconnect();
+        }
+
+        delayedAudible = audioContext.createDelay();
+        delayedAudible.delayTime.value = 0.26;
+
+        sourceNode.connect(delayedAudible)
+        delayedAudible.connect(audioContext.destination);
+
+        visualizer.connectAudio(delayedAudible);
+      }
+
+      function startRenderer() {
+        requestAnimationFrame(() => startRenderer());
+        visualizer.render();
+      }
+
+      function playBufferSource(buffer) {
+        if (!rendering) {
+          rendering = true;
+          startRenderer();
+        }
+
+        if (sourceNode) {
+          sourceNode.disconnect();
+        }
+
+        sourceNode = audioContext.createBufferSource();
+        sourceNode.buffer = buffer;
+        connectToAudioAnalyzer(sourceNode);
+
+        sourceNode.start(0);
+      }
+
+      function loadLocalFiles(files, index = 0) {
+        audioContext.resume();
+
+        var reader = new FileReader();
+        reader.onload = (event) => {
+          audioContext.decodeAudioData(
+            event.target.result,
+            (buf) => {
+              playBufferSource(buf);
+
+              setTimeout(() => {
+                if (files.length > index + 1) {
+                  loadLocalFiles(files, index + 1);
+                } else {
+                  sourceNode.disconnect();
+                  sourceNode = null;
+                  $("#audioSelectWrapper").css('display', 'block');
+                }
+              }, buf.duration * 1000);
+            }
+          );
+        };
+
+        var file = files[index];
+        reader.readAsArrayBuffer(file);
+      }
+
+      function connectMicAudio(sourceNode, audioContext) {
+        audioContext.resume();
+
+        var gainNode = audioContext.createGain();
+        gainNode.gain.value = 1.25;
+        sourceNode.connect(gainNode);
+
+        visualizer.connectAudio(gainNode);
+        startRenderer();
+      }
+
+      function nextPreset(blendTime = 5.7) {
+        presetIndexHist.push(presetIndex);
+
+        var numPresets = presetKeys.length;
+        if (presetRandom) {
+          presetIndex = Math.floor(Math.random() * presetKeys.length);
+        } else {
+          presetIndex = (presetIndex + 1) % numPresets;
+        }
+
+        visualizer.loadPreset(presets[presetKeys[presetIndex]], blendTime);
+        $('#presetSelect').val(presetIndex);
+      }
+
+      function prevPreset(blendTime = 5.7) {
+        var numPresets = presetKeys.length;
+        if (presetIndexHist.length > 0) {
+          presetIndex = presetIndexHist.pop();
+        } else {
+          presetIndex = ((presetIndex - 1) + numPresets) % numPresets;
+        }
+
+        visualizer.loadPreset(presets[presetKeys[presetIndex]], blendTime);
+        $('#presetSelect').val(presetIndex);
+      }
+
+      function restartCycleInterval() {
+        if (cycleInterval) {
+          clearInterval(cycleInterval);
+          cycleInterval = null;
+        }
+
+        if (presetCycle) {
+          cycleInterval = setInterval(() => nextPreset(2.7), presetCycleLength);
+        }
+      }
+
+      $(document).keydown((e) => {
+        if (e.which === 32 || e.which === 39) {
+          nextPreset();
+        } else if (e.which === 8 || e.which === 37) {
+          prevPreset();
+        } else if (e.which === 72) {
+          nextPreset(0);
+        }
+      });
+
+      $('#presetSelect').change((evt) => {
+        presetIndexHist.push(presetIndex);
+        presetIndex = parseInt($('#presetSelect').val());
+        visualizer.loadPreset(presets[presetKeys[presetIndex]], 5.7);
+      });
+
+      $('#resolutionSelect').change((evt) => {
+        const resStr = $('#resolutionSelect').val();
+        localStorage.resolution = resStr;
+        const res = $('#resolutionSelect').val().split('x');
+        canvasW = parseInt(res[0]);
+        canvasH = parseInt(res[1]);
+        canvas.width = canvasW;
+        canvas.height = canvasH;
+        console.log(canvasW, canvasH);
+        if (visualizer) {
+          visualizer.setRendererSize(canvasW, canvasH);
+        }
+      })
+
+      $('#presetCycle').change(() => {
+        presetCycle = $('#presetCycle').is(':checked');
+        restartCycleInterval();
+      });
+
+      $('#presetCycleLength').change((evt) => {
+        presetCycleLength = parseInt($('#presetCycleLength').val() * 1000);
+        restartCycleInterval();
+      });
+
+      $('#presetRandom').change(() => {
+        presetRandom = $('#presetRandom').is(':checked');
+      });
+
+      $("#localFileBut").click(function() {
+        if (!audioContext) {
+          initPlayer();
+        }
+        $("#audioSelectWrapper").css('display', 'none');
+
+        var fileSelector = $('<input type="file" accept="audio/*" multiple />');
+
+        fileSelector[0].onchange = function(event) {
+          loadLocalFiles(fileSelector[0].files);
+        }
+
+        fileSelector.click();
+      });
+
+      $("#micSelect").click(async () => {
+        if (!audioContext) {
+          initPlayer();
+        }
+        $("#audioSelectWrapper").css('display', 'none');
+        
+
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          var micSourceNode = audioContext.createMediaStreamSource(stream);
+          connectMicAudio(micSourceNode, audioContext);
+          canvas.requestFullscreen();
+        } catch(err) {
+          console.log(err);
+        }
+        
+         
+      });
+
+      function initPlayer() {
+        
+        audioContext = new AudioContext();
+        canvas.height = canvasH;
+        canvas.width = canvasW;
+
+        presets = {};
+        if (window.butterchurnPresets) {
+          Object.assign(presets, butterchurnPresets.getPresets());
+        }
+        if (window.butterchurnPresetsExtra) {
+          Object.assign(presets, butterchurnPresetsExtra.getPresets());
+        }
+        // console.log({...presets});
+        // presets = _(presets).toPairs().sortBy(([k, v]) => k.toLowerCase()).fromPairs().value();
+        // console.log('presets2', {...presets});
+        // presetKeys = _.keys(presets);
+        presetKeys = Object.keys(presets).sort();
+        presetIndex = Math.floor(Math.random() * presetKeys.length);
+
+        var presetSelect = document.getElementById('presetSelect');
+        for(var i = 0; i < presetKeys.length; i++) {
+            var opt = document.createElement('option');
+            opt.innerHTML = presetKeys[i].substring(0,60) + (presetKeys[i].length > 60 ? '...' : '');
+            opt.value = i;
+            presetSelect.appendChild(opt);
+        }
+
+        visualizer = butterchurn.default.createVisualizer(audioContext, canvas , {
+          width: canvasW,
+          height: canvasH,
+          pixelRatio: window.devicePixelRatio || 1,
+          textureRatio: 1,
+        });
+        nextPreset(0);
+        cycleInterval = setInterval(() => nextPreset(2.7), presetCycleLength);
+      }
+
+      // initPlayer();
+
+      canvas.addEventListener('click', () => {
+        if (audioContext) {
+          canvas.requestFullscreen();
+        }
+      });
+    });
+  </script>
+</head>
+<body>
+  <div id="mainWrapper">
+    <div style="display: flex;">
+      <div id="audioSelectWrapper">
+        <button id="localFileBut">
+          Load local files
+        </button>
+        <button id="micSelect">
+          Use Mic
+        </button>
+      </div>
+      <div id="presetControls">
+        <div>Preset: <select id="presetSelect"></select></div>
+        <div>Cycle: <input type="checkbox" id="presetCycle" checked></input>
+                    <input type="number" id="presetCycleLength"step="1" value="15" min="1"></input></div>
+        <div>Random: <input type="checkbox" id="presetRandom" checked></input></div>
+        <div>Resolution: <select id="resolutionSelect">
+          <option value="3840x2160">4k (2160p)</option>
+          <option value="1920x1080">1080p</option>
+          <option value="1280x720" selected>720p</option>
+          <option value="640x360">360p</option>
+          <option value="320x180">180p</option>
+          <option value="160x90">90p</option>
+        </select></div>
+      </div>
+    </div>
+    <canvas id='canvas' width='1280' height='720'>
+    </canvas>
+  </div>
+</body>
+</html>
